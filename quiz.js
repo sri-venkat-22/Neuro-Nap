@@ -1,5 +1,4 @@
 const questions = [
-    // ... (your existing questions array remains unchanged)
     {
     question: "1. What sleep issues are you currently experiencing?",
         options: [
@@ -136,7 +135,6 @@ function loadQuestion() {
         });
     }
 
-    // Show back button if not on the first question
     document.getElementById("back-button").style.display = currentQuestionIndex > 0 ? "block" : "none";
 }
 
@@ -164,7 +162,7 @@ document.getElementById("next-button").addEventListener("click", () => {
 document.getElementById("back-button").addEventListener("click", () => {
     if (currentQuestionIndex > 0) {
         currentQuestionIndex--;
-        answers.pop(); // Remove the last answer
+        answers.pop(); 
         loadQuestion();
     }
 });
@@ -187,35 +185,57 @@ function showSummary() {
 }
 
 async function sendResultsToAPI() {
-    const API_KEY = 'AIzaSyBh7AnlDAPVe9RMoJoBPTpD5re6vRlOpXg'; // Ensure this is valid
+    const API_KEY = 'AIzaSyDT40xHO3ZSktJ-bInpfl0IS7U2xzKA4v4'; 
     const prompt = `Based on the following sleep quiz responses, provide a concise recommendation for improving sleep: ${JSON.stringify(answers)}`;
 
-    console.log('Sending prompt to Gemini API:', prompt); // Debug log
-
+    console.log('Sending prompt to Gemini API:', prompt);
     document.getElementById("loading").style.display = "block";
+    
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10000);
+
     try {
-        const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=${API_KEY}`, {
+        const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${API_KEY}`, {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 contents: [{ parts: [{ text: prompt }] }]
-            })
+            }),
+            signal: controller.signal
         });
 
+        clearTimeout(timeoutId);
+
         if (!response.ok) {
-            throw new Error(`HTTP error! Status: ${response.status}`);
+            let errorMessage = `HTTP error! Status: ${response.status}`;
+            try {
+                const errorData = await response.json();
+                if (errorData.error && errorData.error.message) {
+                    errorMessage = `API error ${response.status}: ${errorData.error.message}`;
+                }
+            } catch (jsonError) {
+            }
+            throw new Error(errorMessage);
         }
 
         const data = await response.json();
-        console.log('API Response:', data); 
+        console.log('API Response:', data);
 
-        const recommendation = data.candidates?.[0]?.content?.parts?.[0]?.text || data.text || 'No recommendation found';
+        const recommendation = data.candidates?.[0]?.content?.parts?.[0]?.text 
+                                || data.text 
+                                || 'No recommendation found';
+        if (!recommendation || recommendation === 'No recommendation found') {
+            throw new Error("API returned no recommendation.");
+        }
         displayRecommendation(recommendation);
     } catch (error) {
-        console.error('Error calling Gemini API:', error);
-        displayRecommendation(`Error: ${error.message || 'Unknown error'}`);
+        if (error.name === 'AbortError') {
+            console.error('Request timed out:', error);
+            displayRecommendation("Error: The request timed out. Please try again later.");
+        } else {
+            console.error('Error calling Gemini API:', error);
+            displayRecommendation(`Error: ${error.message || 'Unknown error'}`);
+        }
     } finally {
         document.getElementById("loading").style.display = "none";
     }
@@ -252,5 +272,4 @@ function shareResults() {
     }
 }
 
-// Initialize the quiz
 loadQuestion();
